@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title> Prune — dataset preprocessor (Python backend)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --md-primary:#6750A4;
+    --md-on-primary:#FFFFFF;
+    --md-primary-container:#EADDFF;
+    --md-on-primary-container:#21005E;
+    --md-secondary-container:#D7E3FF;
+    --md-on-secondary-container:#041E49;
+    --md-tertiary-container:#FFDEA8;
+    --md-on-tertiary-container:#402D00;
+    --md-error-container:#FFD9E2;
+    --md-on-error-container:#3E001D;
+    --md-error:#B3261E;
+    --md-success:#146C2E;
+    --md-surface:#FFFBFE;
+    --md-surface-dim:#FAF8FD;
+    --md-surface-variant:#F3EDF7;
+    --md-on-surface:#1D1B20;
+    --md-on-surface-variant:#49454F;
+    --md-outline:#CAC4D0;
+    --md-outline-strong:#79747E;
+    --radius-lg:24px;
+    --radius-md:16px;
+    --radius-sm:10px;
+    --font: 'Roboto', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:var(--font);background:var(--md-surface-dim);color:var(--md-on-surface);-webkit-font-smoothing:antialiased;}
+  .app{max-width:720px;margin:0 auto;padding-bottom:48px;}
+  .topbar{padding:28px 20px 18px;}
+  .topbar h1{font-size:28px;font-weight:500;margin:0;color:var(--md-primary);}
+  .topbar p{margin:4px 0 0;font-size:14px;color:var(--md-on-surface-variant);}
+  .badge{display:inline-block;margin-top:8px;padding:3px 10px;border-radius:100px;background:var(--md-tertiary-container);color:var(--md-on-tertiary-container);font-size:11px;font-weight:500;}
+  .section{padding:0 16px;margin-bottom:16px;}
+  .dropzone{border:1.5px dashed var(--md-outline-strong);border-radius:var(--radius-lg);background:var(--md-surface);padding:32px 20px;text-align:center;cursor:pointer;transition:background .15s ease, border-color .15s ease;}
+  .dropzone:hover, .dropzone.drag{background:var(--md-primary-container);border-color:var(--md-primary);}
+  .dropzone .icon{font-size:34px;margin-bottom:8px;}
+  .dropzone h3{margin:0 0 4px;font-size:16px;font-weight:500;color:var(--md-on-surface);}
+  .dropzone p{margin:0;font-size:13px;color:var(--md-on-surface-variant);}
+  .file-input{display:none;}
+  .row-actions{display:flex;justify-content:center;gap:10px;margin-top:14px;flex-wrap:wrap;}
+  .btn{border:none;border-radius:100px;padding:10px 20px;font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;background:var(--md-secondary-container);color:var(--md-on-secondary-container);}
+  .btn.primary{background:var(--md-primary);color:var(--md-on-primary);}
+  .btn:active{transform:scale(0.97);}
+  .filebar{display:flex;align-items:center;justify-content:space-between;background:var(--md-surface);border-radius:var(--radius-md);padding:12px 16px;font-size:13px;color:var(--md-on-surface-variant);}
+  .filebar b{color:var(--md-on-surface);font-weight:500;}
+  .filebar button{border:none;background:none;color:var(--md-primary);font-weight:500;font-size:13px;cursor:pointer;font-family:var(--font);}
+  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .stat-card{border-radius:var(--radius-md);padding:16px;}
+  .stat-card .val{font-size:26px;font-weight:500;line-height:1.1;}
+  .stat-card .lbl{font-size:12.5px;margin-top:4px;opacity:0.85;}
+  .c-violet{background:var(--md-primary-container);color:var(--md-on-primary-container);}
+  .c-blue{background:var(--md-secondary-container);color:var(--md-on-secondary-container);}
+  .c-amber{background:var(--md-tertiary-container);color:var(--md-on-tertiary-container);}
+  .c-pink{background:var(--md-error-container);color:var(--md-on-error-container);}
+  .tabs{display:flex;gap:6px;overflow-x:auto;padding:4px 2px;-ms-overflow-style:none;scrollbar-width:none;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab{flex:0 0 auto;padding:9px 16px;border-radius:100px;font-size:13px;font-weight:500;color:var(--md-on-surface-variant);background:transparent;border:1px solid var(--md-outline);cursor:pointer;white-space:nowrap;}
+  .tab.active{background:var(--md-primary);border-color:var(--md-primary);color:var(--md-on-primary);}
+  .panel{background:var(--md-surface);border-radius:var(--radius-lg);padding:18px 16px;min-height:120px;}
+  .panel h4{margin:0 0 12px;font-size:14px;font-weight:500;color:var(--md-on-surface);}
+  .empty{text-align:center;color:var(--md-on-surface-variant);font-size:13px;padding:24px 8px;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--md-surface-variant);}
+  th{color:var(--md-on-surface-variant);font-weight:500;}
+  td{color:var(--md-on-surface);}
+  .pill{display:inline-block;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:500;}
+  .pill.numeric{background:var(--md-primary-container);color:var(--md-on-primary-container);}
+  .pill.categorical{background:var(--md-secondary-container);color:var(--md-on-secondary-container);}
+  .pill.boolean{background:var(--md-tertiary-container);color:var(--md-on-tertiary-container);}
+  .pill.datetime{background:var(--md-error-container);color:var(--md-on-error-container);}
+  .pill.text{background:var(--md-outline);color:var(--md-surface);}
+  select{width:100%;font-family:var(--font);font-size:13px;padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--md-outline);background:var(--md-surface);color:var(--md-on-surface);margin-bottom:14px;}
+  .mini-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px;}
+  .mini-stats div{background:var(--md-surface-variant);border-radius:var(--radius-sm);padding:8px 10px;}
+  .mini-stats .v{font-size:14px;font-weight:500;}
+  .mini-stats .l{font-size:10.5px;color:var(--md-on-surface-variant);margin-top:1px;}
+  .chart-img{width:100%;height:auto;border-radius:var(--radius-sm);background:var(--md-surface);display:block;}
+  .target-bar{display:flex;align-items:center;gap:10px;background:var(--md-surface);border-radius:var(--radius-md);padding:10px 14px;}
+  .target-bar label{font-size:12.5px;color:var(--md-on-surface-variant);flex-shrink:0;}
+  .target-bar select{margin:0;flex:1;}
+  .toggle-group{display:flex;gap:6px;margin-bottom:12px;}
+  .toggle-group button{flex:1;border:1px solid var(--md-outline);background:transparent;color:var(--md-on-surface-variant);font-family:var(--font);font-size:12.5px;font-weight:500;padding:8px;border-radius:100px;cursor:pointer;}
+  .toggle-group button.active{background:var(--md-primary-container);color:var(--md-on-primary-container);border-color:transparent;}
+  .action-btn{display:block;width:100%;border:none;border-radius:100px;padding:11px;font-family:var(--font);font-size:13px;font-weight:500;background:var(--md-primary-container);color:var(--md-on-primary-container);cursor:pointer;margin-top:8px;}
+  .action-btn.filled{background:var(--md-primary);color:var(--md-on-primary);}
+  .action-btn:active{transform:scale(0.98);}
+  .field-label{font-size:12px;color:var(--md-on-surface-variant);margin:14px 0 6px;}
+  .field-label:first-child{margin-top:0;}
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+  .chip{padding:6px 12px;border-radius:100px;font-size:12px;font-weight:500;border:1px solid var(--md-outline);background:transparent;color:var(--md-on-surface-variant);cursor:pointer;}
+  .note{font-size:12px;color:var(--md-on-surface-variant);margin-top:8px;line-height:1.5;}
+  .divider{height:1px;background:var(--md-surface-variant);margin:16px 0;}
+  input[type="range"]{width:100%;margin:4px 0 2px;}
+  .loading{text-align:center;padding:30px 8px;color:var(--md-on-surface-variant);font-size:13px;}
+  .error-box{background:var(--md-error-container);color:var(--md-on-error-container);border-radius:var(--radius-sm);padding:12px 14px;font-size:13px;}
+
+  /* ---------- Desktop mode ---------- */
+  body.desktop-mode .app{max-width:1180px;display:grid;grid-template-columns:230px minmax(0,1fr);grid-template-areas:"header header" "upload upload" "filebar filebar" "stats stats" "target target" "tabs panel";column-gap:28px;padding:0 32px 56px;}
+  body.desktop-mode .topbar{grid-area:header;padding:36px 0 20px;}
+  body.desktop-mode .topbar h1{font-size:36px;}
+  body.desktop-mode .topbar p{font-size:15px;}
+  body.desktop-mode #uploadSection{grid-area:upload;padding:0;}
+  body.desktop-mode #fileBarSection{grid-area:filebar;padding:0;}
+  body.desktop-mode #statsSection{grid-area:stats;padding:0;}
+  body.desktop-mode #targetSection{grid-area:target;padding:0;}
+  body.desktop-mode #tabsSection{grid-area:tabs;padding:0;align-self:start;position:sticky;top:24px;}
+  body.desktop-mode #panelSection{grid-area:panel;padding:0;min-width:0;}
+  body.desktop-mode .dropzone{padding:56px 32px;}
+  body.desktop-mode .stats-grid{grid-template-columns:repeat(4,1fr);gap:14px;}
+  body.desktop-mode .stat-card{padding:20px;}
+  body.desktop-mode .stat-card .val{font-size:30px;}
+  body.desktop-mode .tabs{flex-direction:column;overflow-x:visible;gap:4px;padding:0;}
+  body.desktop-mode .tab{text-align:left;width:100%;padding:11px 16px;}
+  body.desktop-mode .panel{padding:28px 30px;box-shadow:0 1px 3px rgba(29,27,32,0.08);}
+  body.desktop-mode .panel h4{font-size:16px;}
+  body.desktop-mode table{font-size:13.5px;}
+  body.desktop-mode .mini-stats{grid-template-columns:repeat(6,1fr);}
+  body.desktop-mode select{max-width:420px;}
+  body.desktop-mode .action-btn{max-width:420px;}
+  body.desktop-mode .toggle-group{max-width:420px;}
+  body.desktop-mode .chart-img{max-width:640px;}
+  body.desktop-mode .field-label{margin-top:18px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1>Prune</h1>
+    <p>Upload any tabular dataset to inspect its shape, gaps and structure.</p>
+    <span class="badge">Python backend · pandas / scikit-learn</span>
+  </div>
+
+  <div class="section" id="uploadSection">
+    <div class="dropzone" id="dropzone">
+      <div class="icon">📄</div>
+      <h3>Drop a CSV, Excel or JSON file here</h3>
+      <p>or tap to browse from your device</p>
+      <input type="file" id="fileInput" class="file-input" accept=".csv,text/csv,.xlsx,.xls,.json,application/json" />
+    </div>
+    <div class="row-actions">
+      <button class="btn" id="sampleBtn">Try sample data</button>
+    </div>
+    <div id="uploadError"></div>
+  </div>
+
+  <div class="section" id="fileBarSection" style="display:none;">
+    <div class="filebar">
+      <span><b id="fileNameLabel"></b></span>
+      <button id="clearBtn">Clear</button>
+    </div>
+  </div>
+
+  <div class="section" id="statsSection" style="display:none;">
+    <div class="stats-grid">
+      <div class="stat-card c-violet"><div class="val" id="statRows">0</div><div class="lbl">Rows</div></div>
+      <div class="stat-card c-blue"><div class="val" id="statCols">0</div><div class="lbl">Columns</div></div>
+      <div class="stat-card c-amber"><div class="val" id="statMissing">0%</div><div class="lbl">Missing cells</div></div>
+      <div class="stat-card c-pink"><div class="val" id="statDupes">0</div><div class="lbl">Duplicate rows</div></div>
+    </div>
+  </div>
+
+  <div class="section" id="targetSection" style="display:none;">
+    <div class="target-bar">
+      <label>Target</label>
+      <select id="targetSelect"></select>
+    </div>
+  </div>
+
+  <div class="section" id="tabsSection" style="display:none;">
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="quality">Quality</button>
+      <button class="tab" data-tab="missing">Missing</button>
+      <button class="tab" data-tab="distributions">Distributions</button>
+      <button class="tab" data-tab="outliers">Outliers</button>
+      <button class="tab" data-tab="target">Target</button>
+      <button class="tab" data-tab="relationships">Relationships</button>
+      <button class="tab" data-tab="correlation">Correlation</button>
+      <button class="tab" data-tab="prepare">Prepare</button>
+    </div>
+  </div>
+
+  <div class="section" id="panelSection" style="display:none;">
+    <div class="panel" id="panelOverview"></div>
+    <div class="panel" id="panelQuality" style="display:none;"></div>
+    <div class="panel" id="panelMissing" style="display:none;"></div>
+    <div class="panel" id="panelDistributions" style="display:none;"></div>
+    <div class="panel" id="panelOutliers" style="display:none;"></div>
+    <div class="panel" id="panelTarget" style="display:none;"></div>
+    <div class="panel" id="panelRelationships" style="display:none;"></div>
+    <div class="panel" id="panelCorrelation" style="display:none;"></div>
+    <div class="panel" id="panelPrepare" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+const el = id => document.getElementById(id);
+let appState = { filename:null, columns:[], types:{}, targetCol:null, rows:0 };
+
+function updateDeviceMode(){
+  const isDesktop = window.matchMedia("(min-width: 900px) and (pointer: fine)").matches;
+  document.body.classList.toggle("desktop-mode", isDesktop);
+}
+updateDeviceMode();
+window.addEventListener("resize", updateDeviceMode);
+
+// ---------------------------------------------------------------------
+// API helper — every call goes to the Flask backend (backend.py)
+// ---------------------------------------------------------------------
+async function api(path, options={}){
+  const res = await fetch(path, options);
+  let data;
+  try{ data = await res.json(); }
+  catch(e){ throw new Error("Bad response from server"); }
+  if(!res.ok){ throw new Error(data.error || "Request failed"); }
+  return data;
+}
+
+function fmtPct(n){ return (Math.round(n*10)/10) + "%"; }
+
+// ---------------------------------------------------------------------
+// Upload
+// ---------------------------------------------------------------------
+const dropzone = el("dropzone");
+const fileInput = el("fileInput");
+dropzone.addEventListener("click", ()=>fileInput.click());
+dropzone.addEventListener("dragover", e=>{ e.preventDefault(); dropzone.classList.add("drag"); });
+dropzone.addEventListener("dragleave", ()=>dropzone.classList.remove("drag"));
+dropzone.addEventListener("drop", e=>{
+  e.preventDefault(); dropzone.classList.remove("drag");
+  if(e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", ()=>{ if(fileInput.files.length) uploadFile(fileInput.files[0]); });
+
+el("sampleBtn").addEventListener("click", async ()=>{
+  el("uploadError").innerHTML = "";
+  try{
+    const data = await api("/api/sample", {method:"POST"});
+    onDatasetLoaded(data);
+  }catch(e){ showUploadError(e.message); }
+});
+
+async function uploadFile(file){
+  el("uploadError").innerHTML = "";
+  const fd = new FormData();
+  fd.append("file", file);
+  try{
+    const data = await api("/api/load", {method:"POST", body:fd});
+    onDatasetLoaded(data);
+  }catch(e){ showUploadError(e.message); }
+}
+
+function showUploadError(msg){
+  el("uploadError").innerHTML = `<div class="error-box" style="margin-top:12px;">${msg}</div>`;
+}
+
+function onDatasetLoaded(data){
+  appState = { filename:data.filename, columns:data.columns, types:data.types, targetCol:data.target_col, rows:data.rows };
+  el("fileNameLabel").textContent = data.filename + " · " + data.rows + " rows";
+  el("uploadSection").style.display = "none";
+  el("fileBarSection").style.display = "block";
+  el("statsSection").style.display = "block";
+  el("targetSection").style.display = "block";
+  el("tabsSection").style.display = "block";
+  el("panelSection").style.display = "block";
+
+  const targetSelect = el("targetSelect");
+  targetSelect.innerHTML = data.columns.map(c=>`<option value="${c}">${c}</option>`).join("");
+  targetSelect.value = data.target_col;
+  targetSelect.onchange = async ()=>{
+    appState.targetCol = targetSelect.value;
+    await api("/api/prepare/set_target", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({target_col: targetSelect.value})});
+    renderStatsFromOverview(data.overview);
+    if(currentTab==="target") renderTarget();
+    if(currentTab==="relationships") renderRelationships();
+    if(currentTab==="correlation") renderCorrelation();
+  };
+
+  renderStatsFromOverview(data.overview);
+  switchTab("overview");
+}
+
+function renderStatsFromOverview(overview){
+  el("statRows").textContent = overview.n_rows.toLocaleString();
+  el("statCols").textContent = overview.n_cols;
+  const totalCells = overview.n_rows * overview.n_cols;
+  const totalMissing = overview.summary.reduce((a,o)=>a+o.missing,0);
+  el("statMissing").textContent = totalCells ? fmtPct(totalMissing/totalCells*100) : "0%";
+  el("statDupes").textContent = overview.n_dupes.toLocaleString();
+}
+
+el("clearBtn").addEventListener("click", ()=>{
+  el("uploadSection").style.display = "block";
+  el("fileBarSection").style.display = "none";
+  el("statsSection").style.display = "none";
+  el("targetSection").style.display = "none";
+  el("tabsSection").style.display = "none";
+  el("panelSection").style.display = "none";
+  fileInput.value = "";
+});
+
+// ---------------------------------------------------------------------
+// Tabs
+// ---------------------------------------------------------------------
+let currentTab = "overview";
+const panelRenderers = {
+  overview: renderOverview,
+  quality: renderQuality,
+  missing: renderMissing,
+  distributions: renderDistributions,
+  outliers: renderOutliers,
+  target: renderTarget,
+  relationships: renderRelationships,
+  correlation: renderCorrelation,
+  prepare: renderPrepare,
+};
+
+document.querySelectorAll(".tab").forEach(btn=>{
+  btn.addEventListener("click", ()=>switchTab(btn.dataset.tab));
+});
+
+function switchTab(tab){
+  currentTab = tab;
+  document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
+  ["Overview","Quality","Missing","Distributions","Outliers","Target","Relationships","Correlation","Prepare"].forEach(name=>{
+    el("panel"+name).style.display = (name.toLowerCase()===tab) ? "block" : "none";
+  });
+  panelRenderers[tab]();
+}
+
+function loadingHtml(msg){ return `<div class="loading">${msg || "Loading…"}</div>`; }
+function errorHtml(msg){ return `<div class="error-box">${msg}</div>`; }
+
+// ---------------------------------------------------------------------
+// Overview
+// ---------------------------------------------------------------------
+async function renderOverview(){
+  el("panelOverview").innerHTML = loadingHtml();
+  try{
+    const ov = await api("/api/overview");
+    const rows = ov.summary.map(o=>`
+      <tr>
+        <td>${o.column}</td>
+        <td><span class="pill ${appState.types[o.column]||'categorical'}">${appState.types[o.column]||o.dtype}</span></td>
+        <td>${o.unique}</td>
+        <td>${o.missing_pct}%</td>
+      </tr>`).join("");
+    el("panelOverview").innerHTML = `
+      <h4>Column summary</h4>
+      <div class="note">${ov.n_rows} rows · ${ov.n_cols} columns · ${ov.n_dupes} duplicate rows · ${ov.n_numeric} numeric, ${ov.n_categorical} categorical, ${ov.n_datetime} datetime columns</div>
+      <table style="margin-top:12px;"><tr><th>Column</th><th>Type</th><th>Unique</th><th>Missing</th></tr>${rows}</table>`;
+  }catch(e){ el("panelOverview").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Quality (duplicates, invalid values, categorical quality)
+// ---------------------------------------------------------------------
+async function renderQuality(){
+  el("panelQuality").innerHTML = loadingHtml();
+  try{
+    const q = await api("/api/quality");
+    const invalidHtml = q.invalid_values.length
+      ? `<table><tr><th>Column</th><th>Issue</th><th>Count</th></tr>${q.invalid_values.map(i=>`<tr><td>${i.column}</td><td>${i.issue}</td><td>${i.count}</td></tr>`).join("")}</table>`
+      : `<div class="empty">No obvious invalid values detected.</div>`;
+    const catHtml = q.categorical_quality.length
+      ? `<table><tr><th>Column</th><th>Categories</th><th>Top</th><th>Rare</th></tr>${q.categorical_quality.map(c=>`<tr><td>${c.column}</td><td>${c.n_categories}</td><td>${c.top_category} (${c.top_pct}%)</td><td>${c.n_rare_categories}</td></tr>`).join("")}</table>`
+      : `<div class="empty">No categorical columns.</div>`;
+
+    el("panelQuality").innerHTML = `
+      <h4>Duplicate rows</h4>
+      <div class="mini-stats" style="grid-template-columns:1fr 1fr;">
+        <div><div class="v">${q.n_duplicates}</div><div class="l">duplicate rows</div></div>
+        <div><div class="v">${q.n_rows-q.n_duplicates}</div><div class="l">rows after removal</div></div>
+      </div>
+      ${q.n_duplicates>0 ? `<button class="action-btn filled" id="removeDupesBtn">Remove duplicates from working copy</button>` : ""}
+      <div class="divider"></div>
+      <h4>Invalid / inconsistent values</h4>${invalidHtml}
+      <div class="divider"></div>
+      <h4>Categorical quality</h4>${catHtml}
+      <div class="note">"Remove duplicates" updates the working copy used in the Prepare tab (computed server-side with pandas) — it does not change the Overview/Missing tabs above, which always reflect the original upload.</div>`;
+
+    const btn = document.getElementById("removeDupesBtn");
+    if(btn) btn.addEventListener("click", async ()=>{
+      try{
+        const res = await api("/api/quality/remove_duplicates", {method:"POST"});
+        switchTab("prepare");
+        alert(`Removed ${res.removed} duplicate rows from the working copy (see Prepare tab).`);
+      }catch(e){ alert(e.message); }
+    });
+  }catch(e){ el("panelQuality").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Missing values
+// ---------------------------------------------------------------------
+async function renderMissing(){
+  el("panelMissing").innerHTML = loadingHtml();
+  try{
+    const m = await api("/api/missing");
+    if(!m.report.length){
+      el("panelMissing").innerHTML = `<h4>Missing values</h4><div class="empty">No missing values detected in this dataset.</div>`;
+      return;
+    }
+    const rows = m.report.map(o=>`<tr><td>${o.column}</td><td>${o.missing_count}</td><td>${o.missing_pct}%</td></tr>`).join("");
+    el("panelMissing").innerHTML = `
+      <h4>Missing values by column</h4>
+      <img class="chart-img" src="${m.chart}" alt="Missing value chart" />
+      <table style="margin-top:14px;"><tr><th>Column</th><th>Count</th><th>%</th></tr>${rows}</table>`;
+  }catch(e){ el("panelMissing").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Distributions
+// ---------------------------------------------------------------------
+function renderDistributions(){
+  const options = appState.columns.map(c=>`<option value="${c}">${c} (${appState.types[c]||"?"})</option>`).join("");
+  el("panelDistributions").innerHTML = `
+    <h4>Distributions</h4>
+    <select id="distColSelect">${options}</select>
+    <div id="distBody">${loadingHtml()}</div>`;
+  el("distColSelect").addEventListener("change", updateDistBody);
+  updateDistBody();
+}
+
+async function updateDistBody(){
+  const col = el("distColSelect").value;
+  el("distBody").innerHTML = loadingHtml();
+  try{
+    const d = await api(`/api/distribution?col=${encodeURIComponent(col)}`);
+    let html = `<img class="chart-img" src="${d.chart}" alt="Distribution of ${col}" />`;
+    if(d.type==="numeric"){
+      const s = d.stats;
+      html += `<div class="mini-stats">
+        <div><div class="v">${s.mean.toFixed(2)}</div><div class="l">mean</div></div>
+        <div><div class="v">${s.median.toFixed(2)}</div><div class="l">median</div></div>
+        <div><div class="v">${s.std.toFixed(2)}</div><div class="l">std dev</div></div>
+        <div><div class="v">${s.min.toFixed(2)}</div><div class="l">min</div></div>
+        <div><div class="v">${s.max.toFixed(2)}</div><div class="l">max</div></div>
+        <div><div class="v">${s.count}</div><div class="l">count</div></div>
+      </div>
+      <div class="note"><b>Skewness:</b> ${d.skewness.skewness===null?"n/a":d.skewness.skewness} (${d.skewness.interpretation})</div>`;
+    }
+    el("distBody").innerHTML = html;
+  }catch(e){ el("distBody").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Outliers
+// ---------------------------------------------------------------------
+function renderOutliers(){
+  const numericCols = appState.columns.filter(c=>appState.types[c]==="numeric");
+  if(!numericCols.length){
+    el("panelOutliers").innerHTML = `<h4>Outliers</h4><div class="empty">No numeric columns to check for outliers.</div>`;
+    return;
+  }
+  const options = numericCols.map(c=>`<option value="${c}">${c}</option>`).join("");
+  el("panelOutliers").innerHTML = `
+    <h4>Outliers</h4>
+    <div class="toggle-group" id="outlierMethodToggle">
+      <button data-method="iqr" class="active">IQR</button>
+      <button data-method="zscore">Z-score</button>
+    </div>
+    <select id="outlierColSelect">${options}</select>
+    <div id="outlierBody">${loadingHtml()}</div>`;
+  let method = "iqr";
+  const toggle = el("outlierMethodToggle");
+  toggle.querySelectorAll("button").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      toggle.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+      b.classList.add("active");
+      method = b.dataset.method;
+      updateOutlierBody(method);
+    });
+  });
+  el("outlierColSelect").addEventListener("change", ()=>updateOutlierBody(method));
+  updateOutlierBody(method);
+}
+
+async function updateOutlierBody(method){
+  const col = el("outlierColSelect").value;
+  el("outlierBody").innerHTML = loadingHtml();
+  try{
+    const res = await api(`/api/outliers?col=${encodeURIComponent(col)}&method=${method}`);
+    if(method==="zscore"){
+      el("outlierBody").innerHTML = `
+        <div class="mini-stats" style="grid-template-columns:1fr 1fr;">
+          <div><div class="v">${res.n_outliers}</div><div class="l">flagged (|z| &gt; 3)</div></div>
+          <div><div class="v">${res.outlier_pct}%</div><div class="l">of column</div></div>
+        </div>`;
+      return;
+    }
+    el("outlierBody").innerHTML = `
+      <img class="chart-img" src="${res.chart}" alt="Boxplot of ${col}" />
+      <div class="mini-stats">
+        <div><div class="v">${res.lower_bound.toFixed(2)}</div><div class="l">lower bound</div></div>
+        <div><div class="v">${res.upper_bound.toFixed(2)}</div><div class="l">upper bound</div></div>
+        <div><div class="v">${res.n_outliers} (${res.outlier_pct}%)</div><div class="l">flagged</div></div>
+      </div>`;
+  }catch(e){ el("outlierBody").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Target
+// ---------------------------------------------------------------------
+async function renderTarget(){
+  const col = appState.targetCol;
+  if(!col){ el("panelTarget").innerHTML = `<h4>Target</h4><div class="empty">Choose a target column above.</div>`; return; }
+  el("panelTarget").innerHTML = loadingHtml();
+  try{
+    const t = await api(`/api/target?col=${encodeURIComponent(col)}`);
+    let html = `<h4>Target: ${col} <span class="pill categorical">${t.task}</span></h4>
+      <img class="chart-img" src="${t.chart}" alt="Target distribution" />`;
+    if(t.task==="classification"){
+      html += `<table style="margin-top:14px;"><tr><th>Value</th><th>Count</th><th>%</th></tr>${t.report.map(r=>`<tr><td>${r.value}</td><td>${r.count}</td><td>${r.pct}%</td></tr>`).join("")}</table>
+        <div class="note">Class imbalance ratio (majority/minority): ${t.imbalance_ratio.toFixed(2)}</div>`;
+    } else {
+      html += `<div class="note"><b>Skewness:</b> ${t.skewness.toFixed(3)}</div>
+        <div class="mini-stats">
+          <div><div class="v">${t.outliers.n_outliers}</div><div class="l">outliers (IQR)</div></div>
+          <div><div class="v">${t.outliers.outlier_pct}%</div><div class="l">of column</div></div>
+        </div>`;
+    }
+    el("panelTarget").innerHTML = html;
+  }catch(e){ el("panelTarget").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Relationships
+// ---------------------------------------------------------------------
+function renderRelationships(){
+  const target = appState.targetCol;
+  const others = appState.columns.filter(c=>c!==target);
+  if(!others.length){ el("panelRelationships").innerHTML = `<div class="empty">Need at least one other column.</div>`; return; }
+  const options = others.map(c=>`<option value="${c}">${c} (${appState.types[c]||"?"})</option>`).join("");
+  el("panelRelationships").innerHTML = `
+    <h4>Relationships with "${target}"</h4>
+    <select id="relColSelect">${options}</select>
+    <div id="relBody">${loadingHtml()}</div>`;
+  el("relColSelect").addEventListener("change", updateRelBody);
+  updateRelBody();
+}
+
+async function updateRelBody(){
+  const col = el("relColSelect").value;
+  const target = appState.targetCol;
+  el("relBody").innerHTML = loadingHtml();
+  try{
+    const r = await api(`/api/relationship?col=${encodeURIComponent(col)}&target=${encodeURIComponent(target)}`);
+    el("relBody").innerHTML = `<img class="chart-img" src="${r.chart}" alt="${col} vs ${target}" />`;
+  }catch(e){ el("relBody").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Correlation / redundancy / leakage
+// ---------------------------------------------------------------------
+async function renderCorrelation(){
+  el("panelCorrelation").innerHTML = loadingHtml();
+  try{
+    const c = await api("/api/correlation");
+    if(!c.chart){
+      el("panelCorrelation").innerHTML = `<h4>Correlation</h4><div class="empty">Need at least two numeric columns.</div>`;
+      return;
+    }
+    const strongHtml = c.strong_pairs.length
+      ? `<table style="margin-top:14px;"><tr><th>Pair</th><th>Correlation</th></tr>${c.strong_pairs.map(p=>`<tr><td>${p.feature_1} · ${p.feature_2}</td><td>${p.correlation.toFixed(2)}</td></tr>`).join("")}</table>`
+      : `<div class="empty">No strongly correlated pairs (|r| ≥ 0.7).</div>`;
+    const redundantHtml = c.redundant_pairs.length
+      ? `<table><tr><th>Pair</th><th>Correlation</th></tr>${c.redundant_pairs.map(p=>`<tr><td>${p.feature_1} · ${p.feature_2}</td><td>${p.correlation.toFixed(3)}</td></tr>`).join("")}</table>
+         <div class="note">These pairs carry almost the same information — consider dropping one.</div>`
+      : `<div class="empty">No redundant pairs found (|r| ≥ 0.95).</div>`;
+    const leakageHtml = c.leakage_flags.length
+      ? `<table><tr><th>Column</th><th>Reason</th></tr>${c.leakage_flags.map(f=>`<tr><td>${f.column}</td><td>${f.reason}</td></tr>`).join("")}</table>
+         <div class="note">Review these columns — they may leak information about the target.</div>`
+      : `<div class="empty">No obvious leakage signals against "${appState.targetCol}".</div>`;
+
+    el("panelCorrelation").innerHTML = `
+      <h4>Correlation matrix</h4>
+      <img class="chart-img" src="${c.chart}" alt="Correlation matrix" />
+      ${strongHtml}
+      <div class="divider"></div>
+      <h4>Redundant features</h4>${redundantHtml}
+      <div class="divider"></div>
+      <h4>Possible data leakage</h4>${leakageHtml}`;
+  }catch(e){ el("panelCorrelation").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Prepare & export
+// ---------------------------------------------------------------------
+async function renderPrepare(){
+  el("panelPrepare").innerHTML = loadingHtml();
+  try{
+    const p = await api("/api/prepare/state");
+    const numericCols = p.columns.filter(c=>p.types[c]==="numeric");
+    const categoricalCols = p.columns.filter(c=>p.types[c]==="categorical");
+    const booleanCols = p.columns.filter(c=>p.types[c]==="boolean");
+
+    const dateChips = p.date_like_columns.length
+      ? `<div class="chip-row">${p.date_like_columns.map(c=>`<button class="chip" data-action="extract-date" data-col="${c}">${c}</button>`).join("")}</div>`
+      : `<div class="empty">No date-like columns detected.</div>`;
+    const textChips = p.text_like_columns.length
+      ? `<div class="chip-row">${p.text_like_columns.map(c=>`<button class="chip" data-action="extract-text" data-col="${c}">${c}</button>`).join("")}</div>`
+      : `<div class="empty">No long free-text columns detected.</div>`;
+    const catOptions = categoricalCols.map(c=>`<option value="${c}">${c}</option>`).join("");
+
+    el("panelPrepare").innerHTML = `
+      <h4>Prepare & export</h4>
+      <div class="note">Working copy: ${p.rows} rows, ${p.columns.length} columns (computed live in Python via <code>/api/prepare/*</code>). These actions apply here only.</div>
+
+      <div class="divider"></div>
+      <div class="field-label">Handle missing values</div>
+      ${p.missing_columns.length ? `
+        <select id="missingColSelect">${p.missing_columns.map(c=>`<option value="${c}">${c} (${p.types[c]})</option>`).join("")}</select>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="action-btn" id="fillMeanBtn" style="margin-top:0;">Fill: mean</button>
+          <button class="action-btn" id="fillMedianBtn" style="margin-top:0;">Fill: median</button>
+          <button class="action-btn" id="fillModeBtn" style="margin-top:0;">Fill: mode</button>
+          <button class="action-btn" id="fillConstBtn" style="margin-top:0;">Fill: constant</button>
+          <button class="action-btn" id="dropRowsBtn" style="margin-top:0;">Drop rows with missing</button>
+          <button class="action-btn" id="dropColBtn" style="margin-top:0;">Drop this column</button>
+        </div>` : `<div class="empty">No missing values in the working copy.</div>`}
+
+      <div class="divider"></div>
+      <div class="field-label">Extract date parts</div>
+      ${dateChips}
+      <div class="field-label">Extract text features (length, word count)</div>
+      ${textChips}
+      ${booleanCols.length ? `
+        <div class="field-label">Convert booleans to 0/1</div>
+        <div class="chip-row">${booleanCols.map(c=>`<button class="chip" data-action="bool-to-int" data-col="${c}">${c}</button>`).join("")}</div>` : ""}
+
+      <div class="divider"></div>
+      <div class="field-label">Encode a categorical column</div>
+      ${categoricalCols.length ? `
+        <select id="encodeColSelect">${catOptions}</select>
+        <div style="display:flex;gap:8px;">
+          <button class="action-btn" id="onehotBtn" style="margin-top:0;">One-hot encode</button>
+          <button class="action-btn" id="labelBtn" style="margin-top:0;">Ordinal encode</button>
+        </div>` : `<div class="empty">No categorical columns left.</div>`}
+
+      <div class="divider"></div>
+      <div class="field-label">Scale numerical columns</div>
+      ${numericCols.length ? `
+        <div class="toggle-group" id="scaleMethodToggle">
+          <button data-method="standard" class="active">Standard</button>
+          <button data-method="minmax">Min-max</button>
+          <button data-method="robust">Robust</button>
+        </div>
+        <button class="action-btn filled" id="scaleBtn">Apply to all numeric columns (sklearn)</button>` : `<div class="empty">No numeric columns.</div>`}
+
+      <div class="divider"></div>
+      <div class="field-label">Transform skewed features</div>
+      <div class="note">${p.skewed_columns.length} column(s) look highly skewed and non-negative: ${p.skewed_columns.join(", ") || "none"}.</div>
+      ${p.skewed_columns.length ? `<button class="action-btn" id="logTransformBtn">Log-transform these columns</button>` : ""}
+
+      <div class="divider"></div>
+      <div class="field-label">Train / validation / test split</div>
+      <label style="font-size:12px;color:var(--md-on-surface-variant);">Test size: <span id="testPctLabel">20%</span></label>
+      <input type="range" id="testPctRange" min="5" max="40" value="20" />
+      <label style="font-size:12px;color:var(--md-on-surface-variant);">Validation size: <span id="valPctLabel">10%</span></label>
+      <input type="range" id="valPctRange" min="0" max="30" value="10" />
+      <button class="action-btn filled" id="splitBtn">Split dataset (sklearn train_test_split)</button>
+      <div id="splitSummary" style="margin-top:10px;"></div>
+      ${p.has_split ? `<button class="action-btn" id="buildPipelineBtn">Fit sklearn preprocessing pipeline (ColumnTransformer)</button><div id="pipelineFitResult"></div>` : ""}
+
+      <div class="divider"></div>
+      <div class="field-label">Export</div>
+      <button class="action-btn filled" id="downloadBtn">Download processed CSV</button>
+      ${p.has_split ? `
+        <button class="action-btn" id="downloadTrainBtn">Download train.csv</button>
+        <button class="action-btn" id="downloadValBtn">Download val.csv</button>
+        <button class="action-btn" id="downloadTestBtn">Download test.csv</button>` : ""}
+      <button class="action-btn" id="downloadPipelineBtn">Download pipeline (.joblib once fitted, else step log JSON)</button>
+      <div class="note">Every action here runs in the Python backend (pandas / scikit-learn) — this mirrors joblib.dump(preprocessor, ...) and df.to_csv(...) from the notebook.</div>
+      <button class="action-btn" id="resetPrepBtn">Reset working copy to original upload</button>
+
+      <div class="divider"></div>
+      <div class="field-label">Pipeline log (${p.pipeline_log.length} step${p.pipeline_log.length===1?"":"s"})</div>
+      ${p.pipeline_log.length ? `<table><tr><th>#</th><th>Step</th></tr>${p.pipeline_log.map((s,i)=>`<tr><td>${i+1}</td><td><code>${JSON.stringify(s)}</code></td></tr>`).join("")}</table>` : `<div class="empty">No transforms applied yet.</div>`}
+    `;
+
+    wirePrepareHandlers(p);
+  }catch(e){ el("panelPrepare").innerHTML = errorHtml(e.message); }
+}
+
+function wirePrepareHandlers(p){
+  document.querySelectorAll('[data-action="extract-date"]').forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      try{ await api("/api/prepare/extract_datetime", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({column: btn.dataset.col})}); renderPrepare(); }
+      catch(e){ alert(e.message); }
+    });
+  });
+  document.querySelectorAll('[data-action="extract-text"]').forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      try{ await api("/api/prepare/extract_text", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({column: btn.dataset.col})}); renderPrepare(); }
+      catch(e){ alert(e.message); }
+    });
+  });
+  document.querySelectorAll('[data-action="bool-to-int"]').forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      try{ await api("/api/prepare/bool_to_int", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({column: btn.dataset.col})}); renderPrepare(); }
+      catch(e){ alert(e.message); }
+    });
+  });
+
+  const missingSelect = document.getElementById("missingColSelect");
+  async function postJson(url, body){
+    return api(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body||{})});
+  }
+  const bind = (id, fn) => { const b = document.getElementById(id); if(b) b.addEventListener("click", fn); };
+
+  bind("fillMeanBtn", async ()=>{ try{ await postJson("/api/prepare/fill_missing", {column:missingSelect.value, strategy:"mean"}); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("fillMedianBtn", async ()=>{ try{ await postJson("/api/prepare/fill_missing", {column:missingSelect.value, strategy:"median"}); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("fillModeBtn", async ()=>{ try{ await postJson("/api/prepare/fill_missing", {column:missingSelect.value, strategy:"mode"}); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("fillConstBtn", async ()=>{
+    const val = prompt(`Constant value to fill missing "${missingSelect.value}" with:`, "0");
+    if(val===null) return;
+    try{ await postJson("/api/prepare/fill_missing", {column:missingSelect.value, strategy:"constant", constant:val}); renderPrepare(); }catch(e){alert(e.message);}
+  });
+  bind("dropRowsBtn", async ()=>{ try{ await postJson("/api/prepare/drop_rows_missing", {column:missingSelect.value}); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("dropColBtn", async ()=>{ try{ await postJson("/api/prepare/drop_column", {column:missingSelect.value}); renderPrepare(); }catch(e){alert(e.message);} });
+
+  const encodeSelect = document.getElementById("encodeColSelect");
+  bind("onehotBtn", async ()=>{ try{ await postJson("/api/prepare/encode", {column:encodeSelect.value, method:"onehot"}); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("labelBtn", async ()=>{ try{ await postJson("/api/prepare/encode", {column:encodeSelect.value, method:"ordinal"}); renderPrepare(); }catch(e){alert(e.message);} });
+
+  let scaleMethod = "standard";
+  const scaleToggle = document.getElementById("scaleMethodToggle");
+  if(scaleToggle) scaleToggle.querySelectorAll("button").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      scaleToggle.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+      b.classList.add("active");
+      scaleMethod = b.dataset.method;
+    });
+  });
+  bind("scaleBtn", async ()=>{
+    try{ const r = await postJson("/api/prepare/scale", {method:scaleMethod}); alert(`Scaled ${r.scaled_columns.length} numeric column(s) using ${scaleMethod} scaling.`); renderPrepare(); }
+    catch(e){ alert(e.message); }
+  });
+  bind("logTransformBtn", async ()=>{ try{ await postJson("/api/prepare/log_transform"); renderPrepare(); }catch(e){alert(e.message);} });
+
+  const testRange = document.getElementById("testPctRange");
+  const valRange = document.getElementById("valPctRange");
+  if(testRange) testRange.addEventListener("input", ()=>{ document.getElementById("testPctLabel").textContent = testRange.value+"%"; });
+  if(valRange) valRange.addEventListener("input", ()=>{ document.getElementById("valPctLabel").textContent = valRange.value+"%"; });
+  bind("splitBtn", async ()=>{
+    try{
+      const r = await postJson("/api/prepare/split", {test_size:(+testRange.value)/100, val_size:(+valRange.value)/100});
+      document.getElementById("splitSummary").innerHTML = `<div class="mini-stats" style="grid-template-columns:1fr 1fr 1fr;">
+        <div><div class="v">${r.train}</div><div class="l">train</div></div>
+        <div><div class="v">${r.val}</div><div class="l">validation</div></div>
+        <div><div class="v">${r.test}</div><div class="l">test</div></div>
+      </div><div class="note">Inferred task: ${r.task}</div>`;
+      renderPrepare();
+    }catch(e){ alert(e.message); }
+  });
+
+  bind("buildPipelineBtn", async ()=>{
+    try{
+      const r = await postJson("/api/prepare/build_pipeline", {scale_method:scaleMethod});
+      document.getElementById("pipelineFitResult").innerHTML = `<div class="note">Fitted ColumnTransformer → output shape ${JSON.stringify(r.output_shape)} (${r.numeric_cols.length} numeric + ${r.categorical_cols.length} categorical columns).</div>`;
+    }catch(e){ alert(e.message); }
+  });
+
+  bind("downloadBtn", ()=>{ window.location.href = "/api/download/processed"; });
+  bind("downloadTrainBtn", ()=>{ window.location.href = "/api/download/split/train"; });
+  bind("downloadValBtn", ()=>{ window.location.href = "/api/download/split/val"; });
+  bind("downloadTestBtn", ()=>{ window.location.href = "/api/download/split/test"; });
+  bind("downloadPipelineBtn", ()=>{ window.location.href = "/api/download/pipeline"; });
+
+  bind("resetPrepBtn", async ()=>{ try{ await postJson("/api/prepare/reset"); renderPrepare(); }catch(e){alert(e.message);} });
+}
+</script>
+</body>
+</html>
