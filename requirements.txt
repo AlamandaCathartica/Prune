@@ -7,3 +7,9 @@ matplotlib>=3.7
 seaborn>=0.12
 joblib>=1.3
 openpyxl>=3.1
+
+# Optional: unlocks XGBoost / LightGBM in the Model tab's baseline ML list.
+# Prune works fine without these installed - those two entries just won't
+# appear in the model picker.
+xgboost>=2.0
+lightgbm>=4.0

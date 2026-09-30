@@ -30,6 +30,9 @@ reuses that notebook's logic directly:
 - `preprocessing_lib.py` is a straight port of the notebook's functions
   (`dataset_overview`, `missing_data_report`, `detect_outliers_iqr`,
   `build_preprocessing_pipeline`, `split_data`, `save_pipeline`, ...).
+- `ml_lib.py` trains and evaluates baseline scikit-learn models (plus
+  optional XGBoost/LightGBM) on that split, and renders their evaluation
+  charts (confusion matrix, ROC/PR curves, residual plots, ...).
 - `backend.py` is a small Flask app that exposes those functions as JSON/image
   API endpoints and serves the front end.
 - `dataset_preprocessor_gui.html` is the browser UI. It no longer computes
@@ -47,6 +50,7 @@ standalone file anymore.
 dataset_preprocessor_app/
 ├── backend.py                     # Flask server + REST API
 ├── preprocessing_lib.py           # Ported notebook logic (pandas/sklearn/matplotlib)
+├── ml_lib.py                      # Baseline ML: train/compare/evaluate models
 ├── dataset_preprocessor_gui.html  # Front end (served by Flask)
 ├── dataset_preprocessor.ipynb     # Original notebook (reference / same folder)
 ├── requirements.txt
@@ -86,7 +90,17 @@ drop in your own CSV / Excel / JSON file.
 | **Target** | Class balance (classification) or skew/outliers (regression) for your chosen target |
 | **Relationships** | Scatter/boxplots between any feature and the target |
 | **Correlation** | Correlation heatmap, redundant-feature pairs, basic data-leakage flags |
-| **Prepare** | Fill/drop missing values, extract date & text features, encode (one-hot/ordinal), scale (standard/min-max/robust), log-transform skewed columns, split into train/val/test, fit a real `sklearn.ColumnTransformer`, and export |
+| **Preview** | Head / tail / random-sample row preview of the raw upload |
+| **Profile** | Automatic per-column profiling report (type, missing, unique, mean/std/skew, top category, memory use) |
+| **Warnings** | Auto-generated "smart warnings": constant columns, high missingness, high cardinality, skew, redundant/identical columns, target imbalance |
+| **Quality** | Duplicate rows, invalid/inconsistent values, rare & inconsistent categories, constant / ID-like / high-cardinality / mixed-type columns |
+| **Missing** | Missing-value heatmap, per-column counts, row-level missingness, nullity-correlation between columns |
+| **Outliers** | Per-column IQR / Z-score / modified-Z (MAD) flagging, plus an all-numeric-columns outlier summary table |
+| **Relationships** | Scatter/box plots between any feature and the target, categorical×categorical heatmaps (Cramér's V), and an association-strength ranking across every column |
+| **Correlation** | Pearson/Spearman/Kendall heatmap, ranked correlation with the target, redundant-feature pairs, basic data-leakage flags |
+| **Prepare** | Fill/drop missing values, extract date & text features, encode (one-hot / ordinal / frequency / smoothed target / binary), scale (standard / min-max / robust / Yeo-Johnson power / L2 row-normalize), log-transform skewed columns, engineer interaction / polynomial / binned features, feature selection (low-variance, correlation pruning, mutual-information ranking), split into train/val/test (random-stratified, chronological, or a k-fold size preview), fit a real `sklearn.ColumnTransformer`, undo/redo every step, and export |
+| **Model** | Baseline machine learning: pick from 9 classification models (Logistic Regression, Decision Tree, Random Forest, Extra Trees, KNN, SVM, Naive Bayes, Gradient Boosting, HistGradientBoosting, +XGBoost/LightGBM if installed) or 11 regression models (Linear/Ridge/Lasso/ElasticNet, Decision Tree, Random Forest, Extra Trees, Gradient Boosting, HistGradientBoosting, SVR, KNN, +XGBoost/LightGBM), train several at once on the Prepare tab's split, and compare them in one table (Accuracy/Precision/Recall/F1/ROC-AUC/PR-AUC, or MAE/MSE/RMSE/R²/MAPE) with a plain-language definition next to every metric. Click into any model for a full evaluation: confusion matrix, classification report, ROC curve, precision-recall curve (classification) or residual plot, actual-vs-predicted, and prediction-error distribution (regression). Download any trained model as a `.joblib` file |
+| **Compare** | Before/after comparison of row/column counts, new/dropped columns, and per-column mean/std/missing shift |
 
 ### Distributions tab
 ![Distributions tab](images/distributions.png)
@@ -131,6 +145,12 @@ POST /api/prepare/fill_missing     {column, strategy, constant?}
 POST /api/prepare/encode           {column, method: "onehot"|"ordinal"}
 POST /api/prepare/scale            {method: "standard"|"minmax"|"robust"}
 POST /api/prepare/split            {test_size, val_size}
+GET  /api/model/task               classification or regression, inferred from the target column
+GET  /api/model/list?task=         available models for that task + xgboost/lightgbm availability
+POST /api/model/train              {model_ids: [...]} → trains + evaluates each on the held-out split
+GET  /api/model/compare            current comparison table (accuracy/F1/ROC-AUC or MAE/RMSE/R², ...)
+GET  /api/model/result/<id>        confusion matrix / ROC / PR / residual / actual-vs-predicted charts
+GET  /api/model/download/<id>      the fitted preprocessor + model as a .joblib file
 GET  /api/download/processed
 GET  /api/download/pipeline
 ```

@@ -179,6 +179,9 @@
   <div class="section" id="tabsSection" style="display:none;">
     <div class="tabs" id="tabs">
       <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="preview">Preview</button>
+      <button class="tab" data-tab="profile">Profile</button>
+      <button class="tab" data-tab="warnings">Warnings</button>
       <button class="tab" data-tab="quality">Quality</button>
       <button class="tab" data-tab="missing">Missing</button>
       <button class="tab" data-tab="distributions">Distributions</button>
@@ -187,11 +190,16 @@
       <button class="tab" data-tab="relationships">Relationships</button>
       <button class="tab" data-tab="correlation">Correlation</button>
       <button class="tab" data-tab="prepare">Prepare</button>
+      <button class="tab" data-tab="model">Model</button>
+      <button class="tab" data-tab="compare">Compare</button>
     </div>
   </div>
 
   <div class="section" id="panelSection" style="display:none;">
     <div class="panel" id="panelOverview"></div>
+    <div class="panel" id="panelPreview" style="display:none;"></div>
+    <div class="panel" id="panelProfile" style="display:none;"></div>
+    <div class="panel" id="panelWarnings" style="display:none;"></div>
     <div class="panel" id="panelQuality" style="display:none;"></div>
     <div class="panel" id="panelMissing" style="display:none;"></div>
     <div class="panel" id="panelDistributions" style="display:none;"></div>
@@ -200,6 +208,8 @@
     <div class="panel" id="panelRelationships" style="display:none;"></div>
     <div class="panel" id="panelCorrelation" style="display:none;"></div>
     <div class="panel" id="panelPrepare" style="display:none;"></div>
+    <div class="panel" id="panelModel" style="display:none;"></div>
+    <div class="panel" id="panelCompare" style="display:none;"></div>
   </div>
 </div>
 
@@ -284,6 +294,7 @@ function onDatasetLoaded(data){
     if(currentTab==="target") renderTarget();
     if(currentTab==="relationships") renderRelationships();
     if(currentTab==="correlation") renderCorrelation();
+    if(currentTab==="model") renderModel();
   };
 
   renderStatsFromOverview(data.overview);
@@ -315,6 +326,9 @@ el("clearBtn").addEventListener("click", ()=>{
 let currentTab = "overview";
 const panelRenderers = {
   overview: renderOverview,
+  preview: renderPreview,
+  profile: renderProfile,
+  warnings: renderWarnings,
   quality: renderQuality,
   missing: renderMissing,
   distributions: renderDistributions,
@@ -323,6 +337,8 @@ const panelRenderers = {
   relationships: renderRelationships,
   correlation: renderCorrelation,
   prepare: renderPrepare,
+  model: renderModel,
+  compare: renderCompare,
 };
 
 document.querySelectorAll(".tab").forEach(btn=>{
@@ -332,7 +348,7 @@ document.querySelectorAll(".tab").forEach(btn=>{
 function switchTab(tab){
   currentTab = tab;
   document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
-  ["Overview","Quality","Missing","Distributions","Outliers","Target","Relationships","Correlation","Prepare"].forEach(name=>{
+  ["Overview","Preview","Profile","Warnings","Quality","Missing","Distributions","Outliers","Target","Relationships","Correlation","Prepare","Model","Compare"].forEach(name=>{
     el("panel"+name).style.display = (name.toLowerCase()===tab) ? "block" : "none";
   });
   panelRenderers[tab]();
@@ -363,12 +379,106 @@ async function renderOverview(){
 }
 
 // ---------------------------------------------------------------------
+// Data preview
+// ---------------------------------------------------------------------
+async function renderPreview(){
+  el("panelPreview").innerHTML = `
+    <h4>Data preview</h4>
+    <div class="toggle-group" id="previewModeToggle">
+      <button data-mode="head" class="active">Head</button>
+      <button data-mode="tail">Tail</button>
+      <button data-mode="sample">Random sample</button>
+    </div>
+    <div id="previewBody">${loadingHtml()}</div>`;
+  const toggle = el("previewModeToggle");
+  toggle.querySelectorAll("button").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      toggle.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+      b.classList.add("active");
+      updatePreviewBody(b.dataset.mode);
+    });
+  });
+  updatePreviewBody("head");
+}
+
+async function updatePreviewBody(mode){
+  el("previewBody").innerHTML = loadingHtml();
+  try{
+    const p = await api(`/api/preview?n=10&mode=${mode}`);
+    const head = `<tr>${p.columns.map(c=>`<th>${c}</th>`).join("")}</tr>`;
+    const rows = p.rows.map(r=>`<tr>${p.columns.map(c=>`<td>${r[c]===null||r[c]===undefined?"—":r[c]}</td>`).join("")}</tr>`).join("");
+    el("previewBody").innerHTML = `
+      <div class="note">Showing ${p.rows.length} of ${p.n_rows_total} rows · ${p.n_cols_total} columns.</div>
+      <div style="overflow-x:auto;"><table style="margin-top:10px;">${head}${rows}</table></div>`;
+  }catch(e){ el("previewBody").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Automatic dataset profiling
+// ---------------------------------------------------------------------
+async function renderProfile(){
+  el("panelProfile").innerHTML = loadingHtml();
+  try{
+    const p = await api("/api/profile");
+    const rows = p.columns.map(c=>{
+      const extra = c.type==="numeric"
+        ? `mean ${c.mean ?? "—"} · std ${c.std ?? "—"} · min ${c.min ?? "—"} · max ${c.max ?? "—"} · skew ${c.skewness ?? "—"}`
+        : (c.top_value!==undefined ? `top: "${c.top_value}" (${c.top_pct}%)` : "");
+      return `<tr>
+        <td>${c.column}${c.is_constant?' <span class="pill" style="background:var(--md-error-container);color:var(--md-on-error-container);">constant</span>':''}</td>
+        <td><span class="pill ${c.type}">${c.type}</span></td>
+        <td>${c.unique} (${c.unique_pct}%)</td>
+        <td>${c.missing_pct}%</td>
+        <td style="font-size:11.5px;color:var(--md-on-surface-variant);">${extra}</td>
+      </tr>`;
+    }).join("");
+    el("panelProfile").innerHTML = `
+      <h4>Automatic dataset profile</h4>
+      <div class="mini-stats" style="grid-template-columns:repeat(3,1fr);">
+        <div><div class="v">${p.n_rows}×${p.n_cols}</div><div class="l">shape</div></div>
+        <div><div class="v">${p.missing_pct}%</div><div class="l">missing cells</div></div>
+        <div><div class="v">${p.dupes_pct}%</div><div class="l">duplicate rows</div></div>
+        <div><div class="v">${p.type_counts.numeric||0}</div><div class="l">numeric cols</div></div>
+        <div><div class="v">${p.type_counts.categorical||0}</div><div class="l">categorical cols</div></div>
+        <div><div class="v">${p.memory_kb} KB</div><div class="l">in memory</div></div>
+      </div>
+      <div class="note" style="margin-top:10px;">${p.n_alerts} smart warning(s) detected — see the Warnings tab.</div>
+      <div style="overflow-x:auto;"><table style="margin-top:12px;"><tr><th>Column</th><th>Type</th><th>Unique</th><th>Missing</th><th>Stats</th></tr>${rows}</table></div>`;
+  }catch(e){ el("panelProfile").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Smart warnings
+// ---------------------------------------------------------------------
+const SEVERITY_COLOR = { high:"c-pink", warning:"c-amber", info:"c-blue" };
+async function renderWarnings(){
+  el("panelWarnings").innerHTML = loadingHtml();
+  try{
+    const w = await api("/api/warnings");
+    if(!w.warnings.length){
+      el("panelWarnings").innerHTML = `<h4>Smart warnings</h4><div class="empty">No issues detected — this dataset looks clean.</div>`;
+      return;
+    }
+    const items = w.warnings.map(x=>`
+      <div class="stat-card ${SEVERITY_COLOR[x.severity]||'c-blue'}" style="margin-bottom:8px;padding:12px 14px;">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;opacity:.75;">${x.severity}${x.column?` · ${x.column}`:""}</div>
+        <div style="font-size:13px;margin-top:2px;">${x.message}</div>
+      </div>`).join("");
+    el("panelWarnings").innerHTML = `<h4>Smart warnings (${w.warnings.length})</h4>${items}`;
+  }catch(e){ el("panelWarnings").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
 // Quality (duplicates, invalid values, categorical quality)
 // ---------------------------------------------------------------------
 async function renderQuality(){
   el("panelQuality").innerHTML = loadingHtml();
   try{
-    const q = await api("/api/quality");
+    const [q, extra] = await Promise.all([api("/api/quality"), api("/api/quality/extra")]);
+    const listOrEmpty = (arr, empty) => arr.length ? `<div class="chip-row">${arr.map(c=>`<span class="chip">${c}</span>`).join("")}</div>` : `<div class="empty">${empty}</div>`;
+    const mixedHtml = extra.mixed_type_columns.length
+      ? `<table><tr><th>Column</th><th>Types found</th></tr>${extra.mixed_type_columns.map(m=>`<tr><td>${m.column}</td><td>${m.types.join(", ")}</td></tr>`).join("")}</table>`
+      : `<div class="empty">No mixed-type columns detected.</div>`;
     const invalidHtml = q.invalid_values.length
       ? `<table><tr><th>Column</th><th>Issue</th><th>Count</th></tr>${q.invalid_values.map(i=>`<tr><td>${i.column}</td><td>${i.issue}</td><td>${i.count}</td></tr>`).join("")}</table>`
       : `<div class="empty">No obvious invalid values detected.</div>`;
@@ -387,6 +497,11 @@ async function renderQuality(){
       <h4>Invalid / inconsistent values</h4>${invalidHtml}
       <div class="divider"></div>
       <h4>Categorical quality</h4>${catHtml}
+      <div class="divider"></div>
+      <h4>Constant columns</h4>${listOrEmpty(extra.constant_columns, "No constant columns.")}
+      <h4 style="margin-top:14px;">ID-like columns</h4>${listOrEmpty(extra.id_like_columns, "No ID-like columns detected.")}
+      <h4 style="margin-top:14px;">High-cardinality columns</h4>${listOrEmpty(extra.high_cardinality_columns, "No high-cardinality categorical columns.")}
+      <h4 style="margin-top:14px;">Mixed-type columns</h4>${mixedHtml}
       <div class="note">"Remove duplicates" updates the working copy used in the Prepare tab (computed server-side with pandas) — it does not change the Overview/Missing tabs above, which always reflect the original upload.</div>`;
 
     const btn = document.getElementById("removeDupesBtn");
@@ -411,11 +526,24 @@ async function renderMissing(){
       el("panelMissing").innerHTML = `<h4>Missing values</h4><div class="empty">No missing values detected in this dataset.</div>`;
       return;
     }
+    const extra = await api("/api/missing/extra");
     const rows = m.report.map(o=>`<tr><td>${o.column}</td><td>${o.missing_count}</td><td>${o.missing_pct}%</td></tr>`).join("");
+    const pairHtml = extra.nullity_correlation.pairs.length
+      ? `<table><tr><th>Columns</th><th>Nullity correlation</th></tr>${extra.nullity_correlation.pairs.map(p=>`<tr><td>${p.col_1} · ${p.col_2}</td><td>${p.correlation}</td></tr>`).join("")}</table>
+         <div class="note">Columns whose missingness correlates strongly tend to go missing together — often the same underlying cause (e.g. a form section left blank).</div>`
+      : `<div class="empty">No strongly correlated missingness patterns.</div>`;
     el("panelMissing").innerHTML = `
       <h4>Missing values by column</h4>
       <img class="chart-img" src="${m.chart}" alt="Missing value chart" />
-      <table style="margin-top:14px;"><tr><th>Column</th><th>Count</th><th>%</th></tr>${rows}</table>`;
+      <table style="margin-top:14px;"><tr><th>Column</th><th>Count</th><th>%</th></tr>${rows}</table>
+      <div class="divider"></div>
+      <h4>Row-level missingness</h4>
+      <div class="mini-stats" style="grid-template-columns:1fr 1fr;">
+        <div><div class="v">${extra.row_stats.rows_complete}</div><div class="l">complete rows</div></div>
+        <div><div class="v">${extra.row_stats.rows_with_any_missing} (${extra.row_stats.rows_with_any_missing_pct}%)</div><div class="l">rows with any missing</div></div>
+      </div>
+      <div class="divider"></div>
+      <h4>Missingness correlation between columns</h4>${pairHtml}`;
   }catch(e){ el("panelMissing").innerHTML = errorHtml(e.message); }
 }
 
@@ -465,10 +593,14 @@ function renderOutliers(){
   }
   const options = numericCols.map(c=>`<option value="${c}">${c}</option>`).join("");
   el("panelOutliers").innerHTML = `
-    <h4>Outliers</h4>
+    <h4>Outliers — all numeric columns</h4>
+    <div id="outlierSummaryBody">${loadingHtml()}</div>
+    <div class="divider"></div>
+    <h4>Outliers — single column</h4>
     <div class="toggle-group" id="outlierMethodToggle">
       <button data-method="iqr" class="active">IQR</button>
       <button data-method="zscore">Z-score</button>
+      <button data-method="mad">Modified Z (MAD)</button>
     </div>
     <select id="outlierColSelect">${options}</select>
     <div id="outlierBody">${loadingHtml()}</div>`;
@@ -484,12 +616,34 @@ function renderOutliers(){
   });
   el("outlierColSelect").addEventListener("change", ()=>updateOutlierBody(method));
   updateOutlierBody(method);
+  updateOutlierSummary();
+}
+
+async function updateOutlierSummary(){
+  try{
+    const s = await api("/api/outliers/summary");
+    if(!s.summary.length){ el("outlierSummaryBody").innerHTML = `<div class="empty">No numeric columns.</div>`; return; }
+    el("outlierSummaryBody").innerHTML = `<div style="overflow-x:auto;"><table>
+      <tr><th>Column</th><th>IQR outliers</th><th>MAD outliers</th></tr>
+      ${s.summary.map(r=>`<tr><td>${r.column}</td><td>${r.iqr_outliers} (${r.iqr_pct}%)</td><td>${r.mad_outliers} (${r.mad_pct}%)</td></tr>`).join("")}
+      </table></div>`;
+  }catch(e){ el("outlierSummaryBody").innerHTML = errorHtml(e.message); }
 }
 
 async function updateOutlierBody(method){
   const col = el("outlierColSelect").value;
   el("outlierBody").innerHTML = loadingHtml();
   try{
+    if(method==="mad"){
+      const res = await api(`/api/outliers/mad?col=${encodeURIComponent(col)}`);
+      el("outlierBody").innerHTML = `
+        <div class="mini-stats" style="grid-template-columns:1fr 1fr;">
+          <div><div class="v">${res.n_outliers}</div><div class="l">flagged (modified z &gt; 3.5)</div></div>
+          <div><div class="v">${res.outlier_pct}%</div><div class="l">of column</div></div>
+        </div>
+        <div class="note">Modified Z-score uses the median and MAD instead of mean/std, so it's more robust to skewed data than a plain Z-score.</div>`;
+      return;
+    }
     const res = await api(`/api/outliers?col=${encodeURIComponent(col)}&method=${method}`);
     if(method==="zscore"){
       el("outlierBody").innerHTML = `
@@ -537,17 +691,31 @@ async function renderTarget(){
 // ---------------------------------------------------------------------
 // Relationships
 // ---------------------------------------------------------------------
-function renderRelationships(){
+async function renderRelationships(){
   const target = appState.targetCol;
   const others = appState.columns.filter(c=>c!==target);
   if(!others.length){ el("panelRelationships").innerHTML = `<div class="empty">Need at least one other column.</div>`; return; }
   const options = others.map(c=>`<option value="${c}">${c} (${appState.types[c]||"?"})</option>`).join("");
   el("panelRelationships").innerHTML = `
-    <h4>Relationships with "${target}"</h4>
+    <h4>Association strength with "${target}"</h4>
+    <div id="relSummaryBody">${loadingHtml()}</div>
+    <div class="divider"></div>
+    <h4>Relationship plot</h4>
     <select id="relColSelect">${options}</select>
     <div id="relBody">${loadingHtml()}</div>`;
   el("relColSelect").addEventListener("change", updateRelBody);
   updateRelBody();
+  updateRelSummary();
+}
+
+async function updateRelSummary(){
+  try{
+    const s = await api(`/api/relationships/summary?target=${encodeURIComponent(appState.targetCol)}`);
+    el("relSummaryBody").innerHTML = `<div style="overflow-x:auto;"><table>
+      <tr><th>Column</th><th>Metric</th><th>Strength</th></tr>
+      ${s.rows.map(r=>`<tr><td>${r.column}</td><td>${r.metric}</td><td>${r.value===null?"n/a":r.value}</td></tr>`).join("")}
+      </table></div>`;
+  }catch(e){ el("relSummaryBody").innerHTML = errorHtml(e.message); }
 }
 
 async function updateRelBody(){
@@ -555,6 +723,14 @@ async function updateRelBody(){
   const target = appState.targetCol;
   el("relBody").innerHTML = loadingHtml();
   try{
+    const colIsCat = appState.types[col]==="categorical" || appState.types[col]==="boolean";
+    const targetIsCat = appState.types[target]==="categorical" || appState.types[target]==="boolean";
+    if(colIsCat && targetIsCat){
+      const r = await api(`/api/relationship/categorical?col=${encodeURIComponent(col)}&target=${encodeURIComponent(target)}`);
+      el("relBody").innerHTML = `<img class="chart-img" src="${r.chart}" alt="${col} vs ${target}" />
+        <div class="note">Cramér's V (association strength, 0–1): ${r.cramers_v===null?"n/a":r.cramers_v.toFixed(3)}</div>`;
+      return;
+    }
     const r = await api(`/api/relationship?col=${encodeURIComponent(col)}&target=${encodeURIComponent(target)}`);
     el("relBody").innerHTML = `<img class="chart-img" src="${r.chart}" alt="${col} vs ${target}" />`;
   }catch(e){ el("relBody").innerHTML = errorHtml(e.message); }
@@ -563,14 +739,21 @@ async function updateRelBody(){
 // ---------------------------------------------------------------------
 // Correlation / redundancy / leakage
 // ---------------------------------------------------------------------
+let corrMethod = "pearson";
 async function renderCorrelation(){
   el("panelCorrelation").innerHTML = loadingHtml();
   try{
-    const c = await api("/api/correlation");
+    const [c, tr] = await Promise.all([
+      api(`/api/correlation?method=${corrMethod}`),
+      api(`/api/correlation/target?method=${corrMethod}&target=${encodeURIComponent(appState.targetCol)}`)
+    ]);
     if(!c.chart){
       el("panelCorrelation").innerHTML = `<h4>Correlation</h4><div class="empty">Need at least two numeric columns.</div>`;
       return;
     }
+    const targetRankHtml = tr.ranking.length
+      ? `<table><tr><th>Column</th><th>Correlation with "${tr.target}"</th></tr>${tr.ranking.map(r=>`<tr><td>${r.column}</td><td>${r.correlation===null?"n/a":r.correlation}</td></tr>`).join("")}</table>`
+      : `<div class="empty">Target must be numeric to rank correlations against it.</div>`;
     const strongHtml = c.strong_pairs.length
       ? `<table style="margin-top:14px;"><tr><th>Pair</th><th>Correlation</th></tr>${c.strong_pairs.map(p=>`<tr><td>${p.feature_1} · ${p.feature_2}</td><td>${p.correlation.toFixed(2)}</td></tr>`).join("")}</table>`
       : `<div class="empty">No strongly correlated pairs (|r| ≥ 0.7).</div>`;
@@ -585,12 +768,23 @@ async function renderCorrelation(){
 
     el("panelCorrelation").innerHTML = `
       <h4>Correlation matrix</h4>
+      <div class="toggle-group" id="corrMethodToggle">
+        <button data-method="pearson" class="${corrMethod==='pearson'?'active':''}">Pearson</button>
+        <button data-method="spearman" class="${corrMethod==='spearman'?'active':''}">Spearman</button>
+        <button data-method="kendall" class="${corrMethod==='kendall'?'active':''}">Kendall</button>
+      </div>
       <img class="chart-img" src="${c.chart}" alt="Correlation matrix" />
       ${strongHtml}
+      <div class="divider"></div>
+      <h4>Ranked correlation with target</h4>${targetRankHtml}
       <div class="divider"></div>
       <h4>Redundant features</h4>${redundantHtml}
       <div class="divider"></div>
       <h4>Possible data leakage</h4>${leakageHtml}`;
+    const ctoggle = el("corrMethodToggle");
+    ctoggle.querySelectorAll("button").forEach(b=>{
+      b.addEventListener("click", ()=>{ corrMethod = b.dataset.method; renderCorrelation(); });
+    });
   }catch(e){ el("panelCorrelation").innerHTML = errorHtml(e.message); }
 }
 
@@ -643,9 +837,12 @@ async function renderPrepare(){
       <div class="field-label">Encode a categorical column</div>
       ${categoricalCols.length ? `
         <select id="encodeColSelect">${catOptions}</select>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="action-btn" id="onehotBtn" style="margin-top:0;">One-hot encode</button>
           <button class="action-btn" id="labelBtn" style="margin-top:0;">Ordinal encode</button>
+          <button class="action-btn" id="freqEncodeBtn" style="margin-top:0;">Frequency encode</button>
+          <button class="action-btn" id="targetEncodeBtn" style="margin-top:0;">Target encode (smoothed mean)</button>
+          <button class="action-btn" id="binaryEncodeBtn" style="margin-top:0;">Binary encode</button>
         </div>` : `<div class="empty">No categorical columns left.</div>`}
 
       <div class="divider"></div>
@@ -656,7 +853,11 @@ async function renderPrepare(){
           <button data-method="minmax">Min-max</button>
           <button data-method="robust">Robust</button>
         </div>
-        <button class="action-btn filled" id="scaleBtn">Apply to all numeric columns (sklearn)</button>` : `<div class="empty">No numeric columns.</div>`}
+        <button class="action-btn filled" id="scaleBtn">Apply to all numeric columns (sklearn)</button>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <button class="action-btn" id="powerTransformBtn" style="margin-top:0;">Power transform (Yeo-Johnson)</button>
+          <button class="action-btn" id="normalizeBtn" style="margin-top:0;">Row-wise normalize (L2)</button>
+        </div>` : `<div class="empty">No numeric columns.</div>`}
 
       <div class="divider"></div>
       <div class="field-label">Transform skewed features</div>
@@ -664,13 +865,55 @@ async function renderPrepare(){
       ${p.skewed_columns.length ? `<button class="action-btn" id="logTransformBtn">Log-transform these columns</button>` : ""}
 
       <div class="divider"></div>
+      <div class="field-label">Feature engineering</div>
+      ${numericCols.length>=2 ? `
+        <div class="note">Interaction feature</div>
+        <div style="display:flex;gap:8px;">
+          <select id="interactCol1">${numericCols.map(c=>`<option value="${c}">${c}</option>`).join("")}</select>
+          <select id="interactCol2">${numericCols.map(c=>`<option value="${c}">${c}</option>`).join("")}</select>
+        </div>
+        <div class="toggle-group" id="interactOpToggle">
+          <button data-op="multiply" class="active">×</button>
+          <button data-op="add">+</button>
+          <button data-op="subtract">−</button>
+          <button data-op="divide">÷</button>
+        </div>
+        <button class="action-btn" id="interactBtn">Create interaction feature</button>` : ""}
+      ${numericCols.length ? `
+        <div class="note" style="margin-top:10px;">Polynomial feature</div>
+        <select id="polyColSelect">${numericCols.map(c=>`<option value="${c}">${c}</option>`).join("")}</select>
+        <div style="display:flex;gap:8px;">
+          <button class="action-btn" id="polyBtn" style="margin-top:0;">Square it (^2)</button>
+          <button class="action-btn" id="cubeBtn" style="margin-top:0;">Cube it (^3)</button>
+        </div>
+        <div class="note" style="margin-top:10px;">Bin into buckets</div>
+        <select id="binColSelect">${numericCols.map(c=>`<option value="${c}">${c}</option>`).join("")}</select>
+        <button class="action-btn" id="binBtn">Bin into 4 quantile buckets</button>` : `<div class="empty">No numeric columns to engineer from.</div>`}
+
+      <div class="divider"></div>
+      <div class="field-label">Feature selection</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="action-btn" id="fsVarianceBtn" style="margin-top:0;">Check low-variance features</button>
+        <button class="action-btn" id="fsCorrBtn" style="margin-top:0;">Check correlated features (r≥0.95)</button>
+        <button class="action-btn" id="fsKBestBtn" style="margin-top:0;">Rank by mutual info with target</button>
+      </div>
+      <div id="fsResult" style="margin-top:10px;"></div>
+
+      <div class="divider"></div>
       <div class="field-label">Train / validation / test split</div>
       <label style="font-size:12px;color:var(--md-on-surface-variant);">Test size: <span id="testPctLabel">20%</span></label>
       <input type="range" id="testPctRange" min="5" max="40" value="20" />
       <label style="font-size:12px;color:var(--md-on-surface-variant);">Validation size: <span id="valPctLabel">10%</span></label>
       <input type="range" id="valPctRange" min="0" max="30" value="10" />
-      <button class="action-btn filled" id="splitBtn">Split dataset (sklearn train_test_split)</button>
+      <button class="action-btn filled" id="splitBtn">Random split (sklearn train_test_split, stratified)</button>
       <div id="splitSummary" style="margin-top:10px;"></div>
+      ${p.date_like_columns.length ? `
+        <div class="note" style="margin-top:10px;">Chronological split (no future leakage) by:</div>
+        <select id="timeSplitColSelect">${p.date_like_columns.map(c=>`<option value="${c}">${c}</option>`).join("")}</select>
+        <button class="action-btn" id="timeSplitBtn">Time-based split</button>` : ""}
+      <div class="note" style="margin-top:10px;">K-fold cross-validation plan (no data is modified)</div>
+      <button class="action-btn" id="kfoldBtn">Preview 5-fold split sizes</button>
+      <div id="kfoldResult" style="margin-top:8px;"></div>
       ${p.has_split ? `<button class="action-btn" id="buildPipelineBtn">Fit sklearn preprocessing pipeline (ColumnTransformer)</button><div id="pipelineFitResult"></div>` : ""}
 
       <div class="divider"></div>
@@ -685,12 +928,43 @@ async function renderPrepare(){
       <button class="action-btn" id="resetPrepBtn">Reset working copy to original upload</button>
 
       <div class="divider"></div>
-      <div class="field-label">Pipeline log (${p.pipeline_log.length} step${p.pipeline_log.length===1?"":"s"})</div>
-      ${p.pipeline_log.length ? `<table><tr><th>#</th><th>Step</th></tr>${p.pipeline_log.map((s,i)=>`<tr><td>${i+1}</td><td><code>${JSON.stringify(s)}</code></td></tr>`).join("")}</table>` : `<div class="empty">No transforms applied yet.</div>`}
+      <div class="field-label">Undo / redo &amp; pipeline history (${p.pipeline_log.length} step${p.pipeline_log.length===1?"":"s"})</div>
+      <div style="display:flex;gap:8px;">
+        <button class="action-btn" id="undoBtn" style="margin-top:0;" ${p.pipeline_log.length?"":"disabled"}>↶ Undo</button>
+        <button class="action-btn" id="redoBtn" style="margin-top:0;">↷ Redo</button>
+        <button class="action-btn" id="clearHistoryBtn" style="margin-top:0;">Clear log</button>
+      </div>
+      ${p.pipeline_log.length ? `<table style="margin-top:10px;"><tr><th>#</th><th>Step</th></tr>${p.pipeline_log.map((s,i)=>`<tr><td>${i+1}</td><td><code>${JSON.stringify(s)}</code></td></tr>`).join("")}</table>` : `<div class="empty">No transforms applied yet.</div>`}
     `;
 
     wirePrepareHandlers(p);
   }catch(e){ el("panelPrepare").innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Before / after comparison
+// ---------------------------------------------------------------------
+async function renderCompare(){
+  el("panelCompare").innerHTML = loadingHtml();
+  try{
+    const c = await api("/api/prepare/compare");
+    const rows = c.columns.map(r=>`
+      <tr>
+        <td>${r.column}</td>
+        <td>${r.missing_before} → ${r.missing_after}</td>
+        <td>${r.mean_before!==undefined ? `${r.mean_before} → ${r.mean_after}` : "—"}</td>
+        <td>${r.std_before!==undefined ? `${r.std_before} → ${r.std_after}` : "—"}</td>
+      </tr>`).join("");
+    el("panelCompare").innerHTML = `
+      <h4>Before / after — original upload vs working copy</h4>
+      <div class="mini-stats" style="grid-template-columns:1fr 1fr;">
+        <div><div class="v">${c.rows_before} → ${c.rows_after}</div><div class="l">rows</div></div>
+        <div><div class="v">${c.cols_before} → ${c.cols_after}</div><div class="l">columns</div></div>
+      </div>
+      <div class="note" style="margin-top:10px;"><b>New columns:</b> ${c.new_columns.join(", ") || "none"}</div>
+      <div class="note"><b>Dropped columns:</b> ${c.dropped_columns.join(", ") || "none"}</div>
+      <div style="overflow-x:auto;"><table style="margin-top:12px;"><tr><th>Column</th><th>Missing</th><th>Mean</th><th>Std dev</th></tr>${rows}</table></div>`;
+  }catch(e){ el("panelCompare").innerHTML = errorHtml(e.message); }
 }
 
 function wirePrepareHandlers(p){
@@ -733,6 +1007,9 @@ function wirePrepareHandlers(p){
   const encodeSelect = document.getElementById("encodeColSelect");
   bind("onehotBtn", async ()=>{ try{ await postJson("/api/prepare/encode", {column:encodeSelect.value, method:"onehot"}); renderPrepare(); }catch(e){alert(e.message);} });
   bind("labelBtn", async ()=>{ try{ await postJson("/api/prepare/encode", {column:encodeSelect.value, method:"ordinal"}); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("freqEncodeBtn", async ()=>{ try{ await postJson("/api/prepare/encode/advanced", {column:encodeSelect.value, method:"frequency"}); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("targetEncodeBtn", async ()=>{ try{ await postJson("/api/prepare/encode/advanced", {column:encodeSelect.value, method:"target"}); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("binaryEncodeBtn", async ()=>{ try{ await postJson("/api/prepare/encode/advanced", {column:encodeSelect.value, method:"binary"}); renderPrepare(); }catch(e){alert(e.message);} });
 
   let scaleMethod = "standard";
   const scaleToggle = document.getElementById("scaleMethodToggle");
@@ -748,6 +1025,62 @@ function wirePrepareHandlers(p){
     catch(e){ alert(e.message); }
   });
   bind("logTransformBtn", async ()=>{ try{ await postJson("/api/prepare/log_transform"); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("powerTransformBtn", async ()=>{ try{ await postJson("/api/prepare/scale/advanced", {method:"power"}); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("normalizeBtn", async ()=>{ try{ await postJson("/api/prepare/scale/advanced", {method:"normalize"}); renderPrepare(); }catch(e){alert(e.message);} });
+
+  // --- Feature engineering ---
+  let interactOp = "multiply";
+  const interactToggle = document.getElementById("interactOpToggle");
+  if(interactToggle) interactToggle.querySelectorAll("button").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      interactToggle.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+      b.classList.add("active");
+      interactOp = b.dataset.op;
+    });
+  });
+  bind("interactBtn", async ()=>{
+    const c1 = document.getElementById("interactCol1").value, c2 = document.getElementById("interactCol2").value;
+    try{ await postJson("/api/prepare/feature/interaction", {col1:c1, col2:c2, op:interactOp}); renderPrepare(); }catch(e){alert(e.message);}
+  });
+  const polySelect = document.getElementById("polyColSelect");
+  bind("polyBtn", async ()=>{ try{ await postJson("/api/prepare/feature/polynomial", {column:polySelect.value, degree:2}); renderPrepare(); }catch(e){alert(e.message);} });
+  bind("cubeBtn", async ()=>{ try{ await postJson("/api/prepare/feature/polynomial", {column:polySelect.value, degree:3}); renderPrepare(); }catch(e){alert(e.message);} });
+  const binSelect = document.getElementById("binColSelect");
+  bind("binBtn", async ()=>{ try{ await postJson("/api/prepare/feature/bin", {column:binSelect.value, bins:4}); renderPrepare(); }catch(e){alert(e.message);} });
+
+  // --- Feature selection ---
+  bind("fsVarianceBtn", async ()=>{
+    try{
+      const r = await api("/api/prepare/feature_selection/variance?threshold=0.0");
+      renderFsResult(r, "Near-zero-variance columns");
+    }catch(e){ alert(e.message); }
+  });
+  bind("fsCorrBtn", async ()=>{
+    try{
+      const r = await api("/api/prepare/feature_selection/correlation?threshold=0.95");
+      renderFsResult(r, "Redundant (highly correlated) columns");
+    }catch(e){ alert(e.message); }
+  });
+  bind("fsKBestBtn", async ()=>{
+    try{
+      const r = await api("/api/prepare/feature_selection/kbest?k=10");
+      const html = r.ranking.length
+        ? `<table><tr><th>Column</th><th>Mutual info score</th></tr>${r.ranking.map(x=>`<tr><td>${x.column}${x.selected?' ⭐':''}</td><td>${x.score}</td></tr>`).join("")}</table>
+           <div class="note">⭐ = top 10 by mutual information with the target.</div>`
+        : `<div class="empty">Not enough numeric columns to rank.</div>`;
+      document.getElementById("fsResult").innerHTML = html;
+    }catch(e){ alert(e.message); }
+  });
+  function renderFsResult(r, label){
+    document.getElementById("fsResult").innerHTML = r.drop.length
+      ? `<div class="note"><b>${label}:</b> ${r.drop.join(", ")}</div>
+         <button class="action-btn" id="fsApplyBtn">Drop these ${r.drop.length} column(s)</button>`
+      : `<div class="empty">No columns flagged by this check.</div>`;
+    const applyBtn = document.getElementById("fsApplyBtn");
+    if(applyBtn) applyBtn.addEventListener("click", async ()=>{
+      try{ await postJson("/api/prepare/feature_selection/apply", {drop_columns:r.drop}); renderPrepare(); }catch(e){ alert(e.message); }
+    });
+  }
 
   const testRange = document.getElementById("testPctRange");
   const valRange = document.getElementById("valPctRange");
@@ -765,6 +1098,29 @@ function wirePrepareHandlers(p){
     }catch(e){ alert(e.message); }
   });
 
+  const timeColSelect = document.getElementById("timeSplitColSelect");
+  bind("timeSplitBtn", async ()=>{
+    try{
+      const r = await postJson("/api/prepare/split/time", {order_column:timeColSelect.value, test_size:(+testRange.value)/100, val_size:(+valRange.value)/100});
+      document.getElementById("splitSummary").innerHTML = `<div class="mini-stats" style="grid-template-columns:1fr 1fr 1fr;">
+        <div><div class="v">${r.train}</div><div class="l">train</div></div>
+        <div><div class="v">${r.val}</div><div class="l">validation</div></div>
+        <div><div class="v">${r.test}</div><div class="l">test</div></div>
+      </div><div class="note">Chronological split by "${timeColSelect.value}" — train is always earlier than test.</div>`;
+      renderPrepare();
+    }catch(e){ alert(e.message); }
+  });
+  bind("kfoldBtn", async ()=>{
+    try{
+      const r = await api("/api/prepare/split/kfold?n_splits=5&stratify=true");
+      document.getElementById("kfoldResult").innerHTML = `<table><tr><th>Fold</th><th>Train</th><th>Val</th></tr>${r.folds.map(f=>`<tr><td>${f.fold}</td><td>${f.train_size}</td><td>${f.val_size}</td></tr>`).join("")}</table>`;
+    }catch(e){ alert(e.message); }
+  });
+
+  bind("undoBtn", async ()=>{ try{ await postJson("/api/prepare/undo"); renderPrepare(); }catch(e){ alert(e.message); } });
+  bind("redoBtn", async ()=>{ try{ await postJson("/api/prepare/redo"); renderPrepare(); }catch(e){ alert(e.message); } });
+  bind("clearHistoryBtn", async ()=>{ try{ await postJson("/api/prepare/history/clear"); renderPrepare(); }catch(e){ alert(e.message); } });
+
   bind("buildPipelineBtn", async ()=>{
     try{
       const r = await postJson("/api/prepare/build_pipeline", {scale_method:scaleMethod});
@@ -779,6 +1135,286 @@ function wirePrepareHandlers(p){
   bind("downloadPipelineBtn", ()=>{ window.location.href = "/api/download/pipeline"; });
 
   bind("resetPrepBtn", async ()=>{ try{ await postJson("/api/prepare/reset"); renderPrepare(); }catch(e){alert(e.message);} });
+}
+
+// ---------------------------------------------------------------------
+// Model — baseline machine learning, comparison & evaluation
+// ---------------------------------------------------------------------
+const METRIC_LABELS = {
+  accuracy:"Accuracy", precision:"Precision", recall:"Recall", f1:"F1", roc_auc:"ROC-AUC", pr_auc:"PR-AUC",
+  mae:"MAE", mse:"MSE", rmse:"RMSE", r2:"R²", mape:"MAPE",
+};
+const TASK_METRIC_ORDER = {
+  classification: ["accuracy","precision","recall","f1","roc_auc","pr_auc"],
+  regression: ["mae","rmse","r2","mape","mse"],
+};
+
+async function renderModel(){
+  el("panelModel").innerHTML = loadingHtml();
+  try{
+    const t = await api("/api/model/task");
+    if(!t.has_split){
+      el("panelModel").innerHTML = `
+        <h4>Baseline machine learning</h4>
+        <div class="empty">Split your dataset into train / validation / test first (in the <b>Prepare</b> tab), then come back here to train and compare models.</div>`;
+      return;
+    }
+    const list = await api(`/api/model/list?task=${t.task}`);
+    renderModelPicker(t, list);
+  }catch(e){ el("panelModel").innerHTML = errorHtml(e.message); }
+}
+
+function renderModelPicker(t, list){
+  const missingDeps = ["xgboost","lightgbm"].filter(dep=>!list.optional_deps[dep]);
+  const checks = list.models.map(m=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:7px 2px;font-size:13px;">
+      <input type="checkbox" class="model-check" value="${m.id}" ${list.trained.includes(m.id)?"checked":""}/>
+      ${m.label}
+    </label>`).join("");
+
+  el("panelModel").innerHTML = `
+    <h4>Baseline machine learning</h4>
+    <div class="note">Target: <b>${t.target_col}</b> · Task detected: <b>${t.task}</b>. Models train on the train split and are scored on the held-out split from Prepare.</div>
+    <div class="divider"></div>
+    <div class="field-label">Choose models to train</div>
+    <div id="modelCheckList">${checks}</div>
+    ${missingDeps.length ? `<div class="note">Optional: <code>pip install ${missingDeps.join(" ")}</code> to unlock ${missingDeps.join(" / ")} here too.</div>` : ""}
+    <button class="action-btn filled" id="trainModelsBtn">Train &amp; compare selected models</button>
+    <div id="modelTrainStatus"></div>
+    <div class="divider"></div>
+    <div id="modelComparisonArea"></div>
+    <div id="modelDetailArea"></div>
+    <div class="divider"></div>
+    <div id="experimentLogArea"></div>
+  `;
+
+  document.getElementById("trainModelsBtn").addEventListener("click", async ()=>{
+    const ids = Array.from(document.querySelectorAll(".model-check:checked")).map(c=>c.value);
+    if(!ids.length){ alert("Choose at least one model."); return; }
+    const statusEl = document.getElementById("modelTrainStatus");
+    statusEl.innerHTML = loadingHtml(`Training ${ids.length} model(s)…`);
+    document.getElementById("modelDetailArea").innerHTML = "";
+    try{
+      const r = await api("/api/model/train", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({model_ids: ids})});
+      statusEl.innerHTML = Object.keys(r.errors||{}).length
+        ? `<div class="error-box">Some models failed to train: ${Object.entries(r.errors).map(([k,v])=>`${k} — ${v}`).join("; ")}</div>`
+        : "";
+      renderComparisonTable(r);
+      renderExperimentLog();
+    }catch(e){ statusEl.innerHTML = errorHtml(e.message); }
+  });
+
+  if(list.trained.length){
+    api("/api/model/compare").then(r=>{ if(r.comparison && r.comparison.length) renderComparisonTable(r); }).catch(()=>{});
+  }
+  renderExperimentLog();
+}
+
+function fmtMetric(task, key, v){
+  if(v===null || v===undefined) return "—";
+  if(key==="mape") return v.toFixed(1)+"%";
+  if(task==="regression") return (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(3));
+  return v.toFixed(3);
+}
+
+function renderComparisonTable(r){
+  const area = document.getElementById("modelComparisonArea");
+  if(!area) return;
+  if(!r.comparison || !r.comparison.length){
+    area.innerHTML = `<div class="empty">No trained models yet.</div>`;
+    return;
+  }
+  const task = r.task;
+  const metricKeys = TASK_METRIC_ORDER[task].filter(k=>r.comparison.some(row=>row[k]!==undefined));
+  const primary = task==="classification" ? "f1" : "rmse";
+  const higherIsBetter = task==="classification";
+  const sorted = [...r.comparison].sort((a,b)=>{
+    const av=a[primary], bv=b[primary];
+    if(av===null||av===undefined) return 1;
+    if(bv===null||bv===undefined) return -1;
+    return higherIsBetter ? (bv-av) : (av-bv);
+  });
+
+  const header = `<th>Model</th>` + metricKeys.map(k=>
+    `<th title="${(r.metric_info[k]||"").replace(/"/g,'&quot;')}">${METRIC_LABELS[k]||k} ⓘ</th>`).join("") + `<th></th>`;
+  const rows = sorted.map(row=>`
+    <tr>
+      <td>${row.label}</td>
+      ${metricKeys.map(k=>`<td>${fmtMetric(task,k,row[k])}</td>`).join("")}
+      <td><button class="chip" data-detail="${row.model_id}">Details</button></td>
+    </tr>`).join("");
+  const legend = metricKeys.map(k=>`<div class="note"><b>${METRIC_LABELS[k]||k}:</b> ${r.metric_info[k]||""}</div>`).join("");
+
+  area.innerHTML = `
+    <div class="field-label">Model comparison ${r.eval_split ? `(scored on the <b>${r.eval_split}</b> split)` : ""}</div>
+    <div style="overflow-x:auto;"><table>${header}${rows}</table></div>
+    <div class="note" style="margin-top:10px;">ⓘ hover a column header for its definition — or read on:</div>
+    ${legend}
+  `;
+  area.querySelectorAll("[data-detail]").forEach(btn=>{
+    btn.addEventListener("click", ()=>renderModelDetail(btn.dataset.detail));
+  });
+}
+
+async function renderModelDetail(modelId){
+  const area = document.getElementById("modelDetailArea");
+  if(!area) return;
+  area.innerHTML = loadingHtml();
+  try{
+    const d = await api(`/api/model/result/${modelId}`);
+    let body = "";
+    if(d.task === "classification"){
+      body = `
+        <div class="field-label">Confusion matrix</div>
+        <img class="chart-img" style="max-width:340px;" src="${d.confusion_matrix_chart}" />
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+          ${d.roc_chart ? `<img class="chart-img" style="max-width:280px;flex:1 1 240px;" src="${d.roc_chart}" />` : ""}
+          ${d.pr_chart ? `<img class="chart-img" style="max-width:280px;flex:1 1 240px;" src="${d.pr_chart}" />` : ""}
+        </div>
+        ${(!d.roc_chart && !d.pr_chart) ? `<div class="note">ROC/PR curves need class probabilities; not available for this model on a multi-class target.</div>` : ""}
+        <div class="field-label">Classification report</div>
+        ${renderClassificationReportTable(d.classification_report)}
+      `;
+    } else {
+      body = `
+        <div class="field-label">Actual vs. predicted &amp; residuals</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <img class="chart-img" style="max-width:320px;flex:1 1 260px;" src="${d.actual_vs_predicted_chart}" />
+          <img class="chart-img" style="max-width:320px;flex:1 1 260px;" src="${d.residual_chart}" />
+        </div>
+        <div class="field-label">Prediction error distribution</div>
+        <img class="chart-img" style="max-width:420px;" src="${d.error_distribution_chart}" />
+      `;
+    }
+    area.innerHTML = `
+      <div class="divider"></div>
+      <h4>${d.label} — detailed evaluation</h4>
+      ${body}
+      <button class="action-btn" id="downloadModelBtn" style="margin-top:14px;">Download this model (.joblib)</button>
+      <div class="divider"></div>
+      <div class="field-label">Feature importance</div>
+      <div id="featImpArea-${modelId}"><button class="action-btn" id="featImpBtn-${modelId}">Compute feature importance</button></div>
+      <div class="divider"></div>
+      <div class="field-label">Predict on new input</div>
+      <div id="predictArea-${modelId}"><button class="action-btn" id="predictFormBtn-${modelId}">Build prediction form</button></div>
+    `;
+    document.getElementById("downloadModelBtn").addEventListener("click", ()=>{
+      window.location.href = `/api/model/download/${modelId}`;
+    });
+    document.getElementById(`featImpBtn-${modelId}`).addEventListener("click", ()=>renderFeatureImportance(modelId));
+    document.getElementById(`predictFormBtn-${modelId}`).addEventListener("click", ()=>renderPredictForm(modelId));
+    area.scrollIntoView({behavior:"smooth", block:"nearest"});
+  }catch(e){ area.innerHTML = errorHtml(e.message); }
+}
+
+async function renderFeatureImportance(modelId){
+  const fiArea = document.getElementById(`featImpArea-${modelId}`);
+  fiArea.innerHTML = loadingHtml();
+  try{
+    const fi = await api(`/api/model/feature_importance/${modelId}`);
+    fiArea.innerHTML = `
+      <div class="note">${fi.method}</div>
+      <img class="chart-img" style="max-width:520px;" src="${fi.chart}" />
+    `;
+  }catch(e){ fiArea.innerHTML = errorHtml(e.message); }
+}
+
+async function renderPredictForm(modelId){
+  const pArea = document.getElementById(`predictArea-${modelId}`);
+  pArea.innerHTML = loadingHtml();
+  try{
+    const pf = await api(`/api/model/predict_form/${modelId}`);
+    if(!pf.features.length){
+      pArea.innerHTML = `<div class="empty">No input features available.</div>`;
+      return;
+    }
+    const fields = pf.features.map(f=>{
+      if(f.type === "numeric"){
+        const hint = f.mean!==null && f.mean!==undefined ? ` (e.g. ${f.mean.toFixed(3)})` : "";
+        return `<label style="display:block;margin:6px 0;font-size:13px;">${f.name}${hint}
+          <input type="number" step="any" class="predict-input" data-feature="${f.name}" style="width:100%;padding:6px;margin-top:3px;"/></label>`;
+      }
+      const opts = f.options.map(o=>`<option value="${o}">${o}</option>`).join("");
+      return `<label style="display:block;margin:6px 0;font-size:13px;">${f.name}
+        <select class="predict-input" data-feature="${f.name}" style="width:100%;padding:6px;margin-top:3px;">
+          <option value="">—</option>${opts}
+        </select></label>`;
+    }).join("");
+    pArea.innerHTML = `
+      <div style="max-width:420px;">${fields}</div>
+      <button class="action-btn filled" id="predictRunBtn-${modelId}" style="margin-top:8px;">Predict</button>
+      <div id="predictResult-${modelId}" style="margin-top:10px;"></div>
+    `;
+    document.getElementById(`predictRunBtn-${modelId}`).addEventListener("click", async ()=>{
+      const resEl = document.getElementById(`predictResult-${modelId}`);
+      const values = {};
+      pArea.querySelectorAll(".predict-input").forEach(inp=>{ values[inp.dataset.feature] = inp.value; });
+      resEl.innerHTML = loadingHtml();
+      try{
+        const pr = await api(`/api/model/predict/${modelId}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({values})});
+        let html = `<div class="note"><b>Prediction:</b> ${pr.prediction}</div>`;
+        if(pr.probabilities){
+          const rows = Object.entries(pr.probabilities).sort((a,b)=>b[1]-a[1])
+            .map(([c,p])=>`<tr><td>${c}</td><td>${(p*100).toFixed(1)}%</td></tr>`).join("");
+          html += `<div style="overflow-x:auto;"><table><tr><th>Class</th><th>Probability</th></tr>${rows}</table></div>`;
+        }
+        resEl.innerHTML = html;
+      }catch(e){ resEl.innerHTML = errorHtml(e.message); }
+    });
+  }catch(e){ pArea.innerHTML = errorHtml(e.message); }
+}
+
+// ---------------------------------------------------------------------
+// Experiment tracking — a persistent log of every model trained this
+// session (across models / splits), independent of the comparison table.
+// ---------------------------------------------------------------------
+async function renderExperimentLog(){
+  const area = document.getElementById("experimentLogArea");
+  if(!area) return;
+  try{
+    const r = await api("/api/experiments");
+    const exps = r.experiments || [];
+    if(!exps.length){
+      area.innerHTML = `<div class="field-label">Experiment log</div><div class="empty">No experiments run yet — training a model above logs a run here.</div>`;
+      return;
+    }
+    const metricKeys = Object.keys(METRIC_LABELS).filter(k=>exps.some(e=>e.metrics[k]!==undefined && e.metrics[k]!==null));
+    const header = `<th>Time</th><th>Model</th><th>Task</th><th>Split</th>` + metricKeys.map(k=>`<th>${METRIC_LABELS[k]||k}</th>`).join("");
+    const rows = [...exps].reverse().map(e=>`
+      <tr>
+        <td>${e.timestamp}</td>
+        <td>${e.label}</td>
+        <td>${e.task}</td>
+        <td>${e.eval_split||""}</td>
+        ${metricKeys.map(k=>`<td>${fmtMetric(e.task,k,e.metrics[k])}</td>`).join("")}
+      </tr>`).join("");
+    area.innerHTML = `
+      <div class="field-label">Experiment log (${exps.length} run${exps.length===1?"":"s"})</div>
+      <div style="overflow-x:auto;"><table>${header}${rows}</table></div>
+      <div style="margin-top:8px;display:flex;gap:8px;">
+        <button class="action-btn" id="expDownloadBtn">Download log (.csv)</button>
+        <button class="action-btn" id="expClearBtn">Clear log</button>
+      </div>
+    `;
+    document.getElementById("expDownloadBtn").addEventListener("click", ()=>{
+      window.location.href = "/api/experiments/download";
+    });
+    document.getElementById("expClearBtn").addEventListener("click", async ()=>{
+      if(!confirm("Clear the experiment log? This can't be undone.")) return;
+      await api("/api/experiments/clear", {method:"POST"});
+      renderExperimentLog();
+    });
+  }catch(e){ area.innerHTML = errorHtml(e.message); }
+}
+
+function renderClassificationReportTable(report){
+  const classLabels = Object.keys(report).filter(k=>!["accuracy","macro avg","weighted avg"].includes(k));
+  const rowKeys = [...classLabels, "macro avg", "weighted avg"].filter(k=>report[k]);
+  const rows = rowKeys.map(k=>{
+    const rr = report[k];
+    return `<tr><td>${k}</td><td>${rr.precision.toFixed(3)}</td><td>${rr.recall.toFixed(3)}</td><td>${rr["f1-score"].toFixed(3)}</td><td>${rr.support}</td></tr>`;
+  }).join("");
+  return `<div style="overflow-x:auto;"><table><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr>${rows}</table></div>`;
 }
 </script>
 </body>
